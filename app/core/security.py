@@ -16,8 +16,6 @@ def validate_api_key(auth: HTTPAuthorizationCredentials = Security(security)):
             settings.JWT_SECRET, 
             algorithms=[settings.JWT_ALGORITHM]
         )
-        
-        # ตรวจสอบว่า token หมดอายุหรือยัง
         return payload
         
     except jwt.ExpiredSignatureError:
@@ -25,8 +23,8 @@ def validate_api_key(auth: HTTPAuthorizationCredentials = Security(security)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
         )
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid JWT Token",
+            detail=f"Invalid JWT Token: {str(e)}",
         )

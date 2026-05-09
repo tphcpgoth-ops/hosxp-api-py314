@@ -34,7 +34,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # Production: ระบุ IP/Domain จริง
+    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000", "https://hosinfo.tphcp.go.th"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
