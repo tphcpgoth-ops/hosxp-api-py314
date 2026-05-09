@@ -53,8 +53,7 @@ app.include_router(
 )
 app.include_router(
     dashboard.router, 
-    prefix="/api/v1", 
-    dependencies=[Depends(validate_api_key)]
+    prefix="/api/v1"
 )
 
 
