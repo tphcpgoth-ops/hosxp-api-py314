@@ -1,0 +1,22 @@
+# ================================================
+# HOSxP API — Python 3.14 Compatible
+# หลีกเลี่ยง package ที่มี Rust extension (maturin)
+# ================================================
+
+# Web Framework
+fastapi==0.136.1
+uvicorn[standard]==0.34.2
+
+# ORM — pure Python, ไม่มี Rust
+sqlalchemy[asyncio]==2.0.40
+
+# Database Drivers
+aiomysql==0.2.0          # MySQL  — pure Python ✅
+# psycopg[binary]==3.2.3  # PostgreSQL — uncomment ถ้าใช้ PG
+
+# Validation — แทน pydantic v2 (มี Rust)
+msgspec==0.21.1           # เร็วกว่า pydantic v1, pure Python ✅
+
+# Utilities
+python-dotenv==1.0.1
+httpx==0.28.1
