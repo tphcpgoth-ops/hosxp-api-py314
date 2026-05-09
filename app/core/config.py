@@ -20,6 +20,8 @@ class Settings:
     APP_ENV: str = os.getenv("APP_ENV", "development")
     APP_PORT: int = int(os.getenv("APP_PORT", "8000"))
     API_KEY: str = os.getenv("API_KEY", "hosinfo_secret_token_2026")
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "fallback_secret")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
 
     @property
     def DATABASE_URL(self) -> str:
