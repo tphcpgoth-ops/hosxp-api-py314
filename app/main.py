@@ -34,8 +34,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000", "https://hosinfo.tphcp.go.th"],
-    allow_credentials=True,
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
+    allow_credentials=True if "*" not in settings.BACKEND_CORS_ORIGINS else False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -23,6 +23,11 @@ class Settings:
     JWT_SECRET: str = os.getenv("JWT_SECRET", "fallback_secret")
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
 
+    # CORS Origins
+    BACKEND_CORS_ORIGINS: list[str] = [
+        i.strip() for i in os.getenv("BACKEND_CORS_ORIGINS", "http://localhost:8000").split(",") if i.strip()
+    ]
+
     @property
     def DATABASE_URL(self) -> str:
         if self.DB_TYPE == "mysql":
