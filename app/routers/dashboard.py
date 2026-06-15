@@ -2,15 +2,30 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from datetime import date
+import time
+from typing import Dict, Any
 
 from app.core.database import get_db
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
+# Simple in-memory cache for HOSxP dashboard statistics
+_dashboard_cache: Dict[str, Any] = {}
+CACHE_TTL_SECONDS = 60
+
 @router.get("/summary", summary="สรุปข้อมูล Dashboard สำหรับหน้าหลัก")
 async def get_dashboard_summary(
     db: AsyncSession = Depends(get_db),
+    force_refresh: bool = Query(False, description="บังคับรีเฟรชข้อมูลใหม่จากฐานข้อมูลตรงๆ")
 ):
+    global _dashboard_cache
+    now = time.time()
+    
+    # Check cache validity
+    if not force_refresh and "data" in _dashboard_cache:
+        elapsed = now - _dashboard_cache["timestamp"]
+        if elapsed < CACHE_TTL_SECONDS:
+            return _dashboard_cache["data"]
     # 1. OPD Stats
     opd_sql = """
         SELECT 
@@ -122,7 +137,7 @@ async def get_dashboard_summary(
     ipd_today = (await db.execute(text(ipd_today_sql))).mappings().first()
     wards = (await db.execute(text(wards_sql))).mappings().all()
 
-    return {
+    result = {
         "stats": {
             "opd": dict(opd) if opd else {},
             "phy": dict(phy) if phy else {},
@@ -137,3 +152,10 @@ async def get_dashboard_summary(
         },
         "wards": [dict(w) for w in wards]
     }
+
+    _dashboard_cache = {
+        "timestamp": now,
+        "data": result
+    }
+
+    return result

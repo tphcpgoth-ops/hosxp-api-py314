@@ -4,7 +4,9 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import check_db_connection
-from app.routers import opd, ipd, drug, dashboard
+from app.routers import opd, ipd, drug, dashboard, dent, ppt, er, cd, ncd, pts, xray, lab, pcc
+import importlib
+or_router = importlib.import_module("app.routers.or")
 from app.core.security import validate_api_key
 from fastapi import Depends
 
@@ -53,6 +55,56 @@ app.include_router(
 )
 app.include_router(
     drug.router, 
+    prefix="/api/v1", 
+    dependencies=[Depends(validate_api_key)]
+)
+app.include_router(
+    dent.router, 
+    prefix="/api/v1", 
+    dependencies=[Depends(validate_api_key)]
+)
+app.include_router(
+    ppt.router, 
+    prefix="/api/v1", 
+    dependencies=[Depends(validate_api_key)]
+)
+app.include_router(
+    er.router, 
+    prefix="/api/v1", 
+    dependencies=[Depends(validate_api_key)]
+)
+app.include_router(
+    or_router.router, 
+    prefix="/api/v1", 
+    dependencies=[Depends(validate_api_key)]
+)
+app.include_router(
+    cd.router, 
+    prefix="/api/v1", 
+    dependencies=[Depends(validate_api_key)]
+)
+app.include_router(
+    ncd.router, 
+    prefix="/api/v1", 
+    dependencies=[Depends(validate_api_key)]
+)
+app.include_router(
+    pts.router, 
+    prefix="/api/v1", 
+    dependencies=[Depends(validate_api_key)]
+)
+app.include_router(
+    xray.router, 
+    prefix="/api/v1", 
+    dependencies=[Depends(validate_api_key)]
+)
+app.include_router(
+    lab.router, 
+    prefix="/api/v1", 
+    dependencies=[Depends(validate_api_key)]
+)
+app.include_router(
+    pcc.router, 
     prefix="/api/v1", 
     dependencies=[Depends(validate_api_key)]
 )
