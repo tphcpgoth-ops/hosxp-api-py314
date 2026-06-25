@@ -99,3 +99,4 @@ async def get_ipd_stats_icd10(
     result = await db.execute(text(sql), {"start": start_date, "end": end_date})
     rows = result.mappings().all()
     return {"fiscal_year": fiscal_year, "data": [dict(r) for r in rows]}
+

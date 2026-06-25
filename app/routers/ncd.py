@@ -5,6 +5,7 @@ from datetime import date
 from typing import Optional
 
 from app.core.database import get_db
+from app.core.security import validate_api_key
 
 router = APIRouter(prefix="/ncd", tags=["Non-Communicable Diseases"])
 
@@ -106,7 +107,7 @@ async def get_ncd_stats_age_breakdown(
     }
 
 
-@router.get("/patients", summary="รายชื่อผู้รับบริการคลินิกโรคไม่ติดต่อรายปี")
+@router.get("/patients", summary="รายชื่อผู้รับบริการคลินิกโรคไม่ติดต่อรายปี", dependencies=[Depends(validate_api_key)])
 async def get_ncd_patients(
     clinic: str = Query(..., description="ประเภทโรค: dm, ht, copd, cancer"),
     db: AsyncSession = Depends(get_db),

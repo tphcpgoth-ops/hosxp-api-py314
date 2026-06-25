@@ -124,6 +124,37 @@ async def get_dashboard_summary(
         ORDER BY w.ward ASC
     """
 
+    # 11. Psychiatry (Clinic 109)
+    psy_sql = """
+        SELECT COUNT(DISTINCT c.hn) AS ptm_psy_hn, COUNT(DISTINCT c.vn) AS ptm_psy_vn,
+            COUNT(DISTINCT IF(o.vstdate = CURDATE(),c.vn,NULL)) AS pt_psy_today
+        FROM clinic_visit c
+        INNER JOIN ovst o ON o.vn = c.vn
+        WHERE o.vstdate BETWEEN DATE_FORMAT(NOW(),'%Y-%m-01') AND CURDATE()
+        AND c.clinic = '109'
+    """
+    
+    # 12. Drug / Narcotic (Clinic 130)
+    drug_sql = """
+        SELECT COUNT(DISTINCT c.hn) AS ptm_drug_hn, COUNT(DISTINCT c.vn) AS ptm_drug_vn,
+            COUNT(DISTINCT IF(o.vstdate = CURDATE(),c.vn,NULL)) AS pt_drug_today
+        FROM clinic_visit c
+        INNER JOIN ovst o ON o.vn = c.vn
+        WHERE o.vstdate BETWEEN DATE_FORMAT(NOW(),'%Y-%m-01') AND CURDATE()
+        AND c.clinic = '130'
+    """
+
+    # 13. Refer In/Out
+    refer_sql = """
+        SELECT 
+            (SELECT COUNT(DISTINCT hn) FROM referin WHERE refer_date BETWEEN DATE_FORMAT(NOW(),'%Y-%m-01') AND CURDATE()) AS ptm_refer_in_hn,
+            (SELECT COUNT(DISTINCT hn) FROM referout WHERE refer_date BETWEEN DATE_FORMAT(NOW(),'%Y-%m-01') AND CURDATE()) AS ptm_refer_out_hn,
+            (SELECT COUNT(*) FROM referin WHERE refer_date BETWEEN DATE_FORMAT(NOW(),'%Y-%m-01') AND CURDATE()) AS ptm_refer_in_vn,
+            (SELECT COUNT(*) FROM referout WHERE refer_date BETWEEN DATE_FORMAT(NOW(),'%Y-%m-01') AND CURDATE()) AS ptm_refer_out_vn,
+            (SELECT COUNT(*) FROM referin WHERE refer_date = CURDATE()) AS pt_refer_in_today,
+            (SELECT COUNT(*) FROM referout WHERE refer_date = CURDATE()) AS pt_refer_out_today
+    """
+
     # Execute all
     opd = (await db.execute(text(opd_sql))).mappings().first()
     phy = (await db.execute(text(phy_sql))).mappings().first()
@@ -136,6 +167,9 @@ async def get_dashboard_summary(
     ward_summary = (await db.execute(text(ward_sum_sql))).mappings().first()
     ipd_today = (await db.execute(text(ipd_today_sql))).mappings().first()
     wards = (await db.execute(text(wards_sql))).mappings().all()
+    psy = (await db.execute(text(psy_sql))).mappings().first()
+    drug = (await db.execute(text(drug_sql))).mappings().first()
+    refer = (await db.execute(text(refer_sql))).mappings().first()
 
     result = {
         "stats": {
@@ -149,6 +183,9 @@ async def get_dashboard_summary(
             "xray": dict(xray) if xray else {},
             "ward_summary": dict(ward_summary) if ward_summary else {},
             "ipd_today": dict(ipd_today) if ipd_today else {},
+            "psy": dict(psy) if psy else {},
+            "drug": dict(drug) if drug else {},
+            "refer": dict(refer) if refer else {},
         },
         "wards": [dict(w) for w in wards]
     }

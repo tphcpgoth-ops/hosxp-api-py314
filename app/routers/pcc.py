@@ -6,6 +6,7 @@ from typing import Optional
 import calendar
 
 from app.core.database import get_db
+from app.core.security import validate_api_key
 
 router = APIRouter(prefix="/pcc", tags=["Primary Care Cluster"])
 
@@ -175,7 +176,7 @@ async def get_pcc_stats_inscl_breakdown(
     }
 
 
-@router.get("/patients", summary="รายชื่อผู้รับบริการ PCC ตะพานหินรายเดือน")
+@router.get("/patients", summary="รายชื่อผู้รับบริการ PCC ตะพานหินรายเดือน", dependencies=[Depends(validate_api_key)])
 async def get_pcc_patients(
     ym: str = Query(..., description="ปี-เดือน ค.ศ. เช่น 2026-05"),
     db: AsyncSession = Depends(get_db),

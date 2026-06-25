@@ -6,6 +6,7 @@ from typing import Optional
 import calendar
 
 from app.core.database import get_db
+from app.core.security import validate_api_key
 
 router = APIRouter(prefix="/or", tags=["Operating Room"])
 
@@ -144,7 +145,7 @@ async def get_or_stats_inscl_breakdown(
     }
 
 
-@router.get("/patients", summary="รายชื่อผู้รับบริการผ่าตัดรายเดือน")
+@router.get("/patients", summary="รายชื่อผู้รับบริการผ่าตัดรายเดือน", dependencies=[Depends(validate_api_key)])
 async def get_or_patients(
     ym: str = Query(..., description="ปี-เดือน ค.ศ. เช่น 2026-05"),
     db: AsyncSession = Depends(get_db),

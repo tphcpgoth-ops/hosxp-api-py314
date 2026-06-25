@@ -6,6 +6,7 @@ from typing import Optional
 import calendar
 
 from app.core.database import get_db
+from app.core.security import validate_api_key
 
 router = APIRouter(prefix="/xray", tags=["X-Ray"])
 
@@ -180,7 +181,7 @@ async def get_xray_stats_inscl_breakdown(
     }
 
 
-@router.get("/patients", summary="รายชื่อผู้รับบริการรังสีวินิจฉัยรายเดือน")
+@router.get("/patients", summary="รายชื่อผู้รับบริการรังสีวินิจฉัยรายเดือน", dependencies=[Depends(validate_api_key)])
 async def get_xray_patients(
     ym: str = Query(..., description="ปี-เดือน ค.ศ. เช่น 2026-05"),
     db: AsyncSession = Depends(get_db),

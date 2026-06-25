@@ -5,12 +5,13 @@ from datetime import date
 from typing import Optional
 
 from app.core.database import get_db
+from app.core.security import validate_api_key
 from app.schemas.opd import OpdVisitItem, PatientCensusResponse, rows_to_list
 
 router = APIRouter(prefix="/opd", tags=["OPD"])
 
 
-@router.get("/visits", summary="รายการผู้ป่วย OPD ตามวันที่")
+@router.get("/visits", summary="รายการผู้ป่วย OPD ตามวันที่", dependencies=[Depends(validate_api_key)])
 async def get_opd_visits(
     visit_date: date = Query(default=date.today(), description="วันที่รับบริการ YYYY-MM-DD"),
     page: int = Query(default=1, ge=1),
@@ -78,7 +79,7 @@ async def get_daily_census(
     }
 
 
-@router.get("/no-diagnosis", summary="OPD ที่ยังไม่มี ICD-10")
+@router.get("/no-diagnosis", summary="OPD ที่ยังไม่มี ICD-10", dependencies=[Depends(validate_api_key)])
 async def get_opd_no_diagnosis(
     visit_date: date = Query(default=date.today()),
     db: AsyncSession = Depends(get_db),

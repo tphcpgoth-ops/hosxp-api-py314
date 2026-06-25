@@ -6,6 +6,7 @@ from typing import Optional
 import calendar
 
 from app.core.database import get_db
+from app.core.security import validate_api_key
 
 router = APIRouter(prefix="/pts", tags=["Physical Therapy"])
 
@@ -211,7 +212,7 @@ async def get_pts_stats_inscl_breakdown(
     }
 
 
-@router.get("/patients", summary="รายชื่อผู้รับบริการกายภาพบำบัดรายเดือน")
+@router.get("/patients", summary="รายชื่อผู้รับบริการกายภาพบำบัดรายเดือน", dependencies=[Depends(validate_api_key)])
 async def get_pts_patients(
     ym: str = Query(..., description="ปี-เดือน ค.ศ. เช่น 2026-05"),
     db: AsyncSession = Depends(get_db),

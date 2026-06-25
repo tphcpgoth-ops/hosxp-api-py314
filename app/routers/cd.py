@@ -6,6 +6,7 @@ from typing import Optional
 import calendar
 
 from app.core.database import get_db
+from app.core.security import validate_api_key
 
 router = APIRouter(prefix="/cd", tags=["Communicable Diseases"])
 
@@ -55,7 +56,7 @@ async def get_cd_stats_diseases(
     return {"year": year, "data": [dict(r) for r in rows]}
 
 
-@router.get("/patients", summary="รายชื่อผู้ป่วยโรคติดต่อตามเดือน")
+@router.get("/patients", summary="รายชื่อผู้ป่วยโรคติดต่อตามเดือน", dependencies=[Depends(validate_api_key)])
 async def get_cd_patients(
     ym: str = Query(..., description="ปี-เดือน ค.ศ. เช่น 2026-05"),
     db: AsyncSession = Depends(get_db),

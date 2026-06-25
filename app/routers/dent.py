@@ -6,6 +6,7 @@ from typing import Optional
 import calendar
 
 from app.core.database import get_db
+from app.core.security import validate_api_key
 
 router = APIRouter(prefix="/dent", tags=["Dental"])
 
@@ -217,7 +218,7 @@ async def get_dent_stats_group_pie(
     return {"fiscal_year": fiscal_year, "data": [dict(r) for r in rows]}
 
 
-@router.get("/patients", summary="รายชื่อผู้รับบริการทันตกรรมแยกตามเดือน")
+@router.get("/patients", summary="รายชื่อผู้รับบริการทันตกรรมแยกตามเดือน", dependencies=[Depends(validate_api_key)])
 async def get_dent_patients(
     ym: str = Query(..., description="เดือนในรูปแบบ YYYY-MM"),
     db: AsyncSession = Depends(get_db),
