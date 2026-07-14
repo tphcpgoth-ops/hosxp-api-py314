@@ -11,32 +11,47 @@ from app.core.security import validate_api_key
 router = APIRouter(prefix="/cd", tags=["Communicable Diseases"])
 
 
-@router.get("/stats-summary", summary="สรุปสถิติผู้ป่วยโรคติดต่อรายเดือนตามปีปฏิทิน")
+def get_date_range(fiscal_year: Optional[int] = None, year: Optional[int] = None):
+    val = fiscal_year if fiscal_year is not None else year
+    if val is None:
+        val = date.today().year + (1 if date.today().month > 9 else 0) + 543
+    if val > 2400:  # BE fiscal year
+        year_end = val - 543
+        year_start = year_end - 1
+        return f"{year_start}-10-01", f"{year_end}-09-30", val
+    else:  # AD calendar year
+        return f"{val}-01-01", f"{val}-12-31", val
+
+
+@router.get("/stats-summary", summary="สรุปสถิติผู้ป่วยโรคติดต่อรายเดือนตามปีงบประมาณ")
 async def get_cd_stats_summary(
-    year: int = Query(default=date.today().year),
+    fiscal_year: Optional[int] = Query(default=None),
+    year: Optional[int] = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
+    start_date, end_date, res_year = get_date_range(fiscal_year, year)
     sql = """
         SELECT DATE_FORMAT(s.vstdate,'%Y-%m') AS AMONTH,
                COUNT(DISTINCT s.hn) AS hn_count,
                COUNT(*) AS total,
-               DATE_FORMAT(s.vstdate,'%Y') AS AY, DATE_FORMAT(s.vstdate,'%m') AS AM
+               DATE_FORMAT(s.vstdate,'%Y')+543 AS AY, DATE_FORMAT(s.vstdate,'%m') AS AM
         FROM surveil_member s
-        WHERE DATE_FORMAT(s.vstdate,'%Y') = :year
+        WHERE s.vstdate BETWEEN :start AND :end
         GROUP BY DATE_FORMAT(s.vstdate,'%Y-%m')
         ORDER BY DATE_FORMAT(s.vstdate,'%Y-%m') ASC
     """
-    
-    result = await db.execute(text(sql), {"year": str(year)})
+    result = await db.execute(text(sql), {"start": start_date, "end": end_date})
     rows = result.mappings().all()
-    return {"year": year, "data": [dict(r) for r in rows]}
+    return {"fiscal_year": res_year, "year": res_year, "data": [dict(r) for r in rows]}
 
 
 @router.get("/stats-diseases", summary="สถิติโรคติดต่อยอดฮิต (อันดับ 506)")
 async def get_cd_stats_diseases(
-    year: int = Query(default=date.today().year),
+    fiscal_year: Optional[int] = Query(default=None),
+    year: Optional[int] = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
+    start_date, end_date, res_year = get_date_range(fiscal_year, year)
     sql = """
         SELECT n.code506,
                COALESCE(p.name, 'ไม่ระบุ') AS namee,
@@ -45,15 +60,29 @@ async def get_cd_stats_diseases(
         FROM surveil_member s
         LEFT OUTER JOIN provis_code506 p ON p.code = s.code506
         LEFT OUTER JOIN name506 n ON n.code = s.code506
-        WHERE DATE_FORMAT(s.vstdate,'%Y') = :year
+        WHERE s.vstdate BETWEEN :start AND :end
         GROUP BY n.code506, p.name, n.name
         ORDER BY COUNT(*) DESC
         LIMIT 50
     """
-    
-    result = await db.execute(text(sql), {"year": str(year)})
+    result = await db.execute(text(sql), {"start": start_date, "end": end_date})
     rows = result.mappings().all()
-    return {"year": year, "data": [dict(r) for r in rows]}
+    
+    data = []
+    for r in rows:
+        item = dict(r)
+        msql = """
+            SELECT DATE_FORMAT(s.vstdate,'%m') AS m, COUNT(*) AS cnt
+            FROM surveil_member s
+            WHERE s.vstdate BETWEEN :start AND :end AND s.code506 = :code
+            GROUP BY DATE_FORMAT(s.vstdate,'%m')
+        """
+        mres = await db.execute(text(msql), {"start": start_date, "end": end_date, "code": item["code506"]})
+        mrows = mres.mappings().all()
+        item["months"] = {mr["m"]: mr["cnt"] for mr in mrows}
+        data.append(item)
+        
+    return {"fiscal_year": res_year, "year": res_year, "data": data}
 
 
 @router.get("/patients", summary="รายชื่อผู้ป่วยโรคติดต่อตามเดือน", dependencies=[Depends(validate_api_key)])

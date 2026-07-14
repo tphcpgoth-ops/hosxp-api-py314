@@ -179,6 +179,45 @@ async def get_opd_stats_specialty(
     return {"fiscal_year": fiscal_year, "data": [dict(r) for r in rows]}
 
 
+@router.get("/stats-nhso-clinic", summary="สถิติรายแผนกตามมาตรฐาน สปสช. (nhso_clinic)")
+async def get_opd_stats_nhso_clinic(
+    fiscal_year: int = Query(default=date.today().year + (1 if date.today().month > 9 else 0) + 543),
+    db: AsyncSession = Depends(get_db),
+):
+    year_end = fiscal_year - 543
+    year_start = year_end - 1
+    start_date = f"{year_start}-10-01"
+    end_date = f"{year_end}-09-30"
+
+    sql = """
+        SELECT t.nhso_code, t.name, 
+               SUM(t.visitopdhn) - SUM(t.visitipdhn) AS opd_hn,
+               SUM(t.visitopd) - SUM(t.visitipd) AS opd_vn,
+               SUM(t.visitipdhn) AS ipd_hn,
+               SUM(t.visitipd) AS ipd_an
+        FROM (
+            SELECT s.nhso_code, n.name, COUNT(DISTINCT v.hn) AS visitopdhn, COUNT(*) AS visitopd, 0 AS visitipdhn, 0 AS visitipd
+            FROM vn_stat v
+            LEFT OUTER JOIN spclty s ON s.spclty = v.spclty
+            LEFT OUTER JOIN nhso_clinic n ON n.code = s.nhso_code
+            WHERE v.vstdate BETWEEN :start AND :end
+            GROUP BY s.nhso_code
+            UNION ALL
+            SELECT s.nhso_code, n.name, 0 AS visitopdhn, 0 AS visitopd, COUNT(DISTINCT hn) AS visitipdhn, COUNT(*) AS visitipd
+            FROM an_stat a
+            LEFT OUTER JOIN spclty s ON s.spclty = a.spclty
+            LEFT OUTER JOIN nhso_clinic n ON n.code = s.nhso_code
+            WHERE regdate BETWEEN :start AND :end
+            GROUP BY s.nhso_code
+        ) AS t
+        GROUP BY t.nhso_code
+        ORDER BY t.nhso_code
+    """
+    result = await db.execute(text(sql), {"start": start_date, "end": end_date})
+    rows = result.mappings().all()
+    return {"fiscal_year": fiscal_year, "data": [dict(r) for r in rows]}
+
+
 @router.get("/stats-inscl", summary="สัดส่วนสิทธิการรักษาตามปีงบประมาณ")
 async def get_opd_stats_inscl(
     fiscal_year: int = Query(default=date.today().year + (1 if date.today().month > 9 else 0) + 543),

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import check_db_connection
-from app.routers import opd, ipd, drug, dashboard, dent, ppt, er, cd, ncd, pts, xray, lab, pcc, ward
+from app.routers import opd, ipd, drug, dashboard, dent, ppt, er, cd, ncd, pts, xray, lab, pcc, ward, psy, appointment
 import importlib
 or_router = importlib.import_module("app.routers.or")
 from app.core.security import validate_api_key
@@ -61,6 +61,10 @@ app.include_router(
     dependencies=[Depends(validate_api_key)]
 )
 app.include_router(
+    psy.router, 
+    prefix="/api/v1"
+)
+app.include_router(
     dent.router, 
     prefix="/api/v1"
 )
@@ -102,6 +106,10 @@ app.include_router(
 )
 app.include_router(
     dashboard.router, 
+    prefix="/api/v1"
+)
+app.include_router(
+    appointment.router, 
     prefix="/api/v1"
 )
 
