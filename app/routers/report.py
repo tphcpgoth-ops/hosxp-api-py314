@@ -8,6 +8,7 @@ import time
 import re
 import base64
 from datetime import date, datetime
+from typing import Any
 
 router = APIRouter(
     prefix="/report",
@@ -17,7 +18,7 @@ router = APIRouter(
 
 class ReportQueryRequest(BaseModel):
     query: str
-    params: dict | None = None
+    params: Any = None
 
 def is_read_only_query(sql: str) -> bool:
     cleaned = re.sub(r'--.*$|/\*.*?\*/', '', sql, flags=re.MULTILINE).strip()
@@ -46,7 +47,7 @@ async def execute_report_sql(
     start_time = time.time()
     try:
         # Extract parameter placeholders like :start_date from sql query
-        raw_params = payload.params if payload.params else {}
+        raw_params = payload.params if isinstance(payload.params, dict) else {}
         param_names = set(re.findall(r':([a-zA-Z0-9_]+)', sql))
         bind_params = {k: raw_params[k] for k in param_names if k in raw_params}
 
