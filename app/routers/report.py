@@ -17,10 +17,11 @@ router = APIRouter(
 
 class ReportQueryRequest(BaseModel):
     query: str
+    params: dict | None = None
 
 def is_read_only_query(sql: str) -> bool:
     cleaned = re.sub(r'--.*$|/\*.*?\*/', '', sql, flags=re.MULTILINE).strip()
-    if not re.match(r'^(SELECT|SHOW|DESCRIBE|EXPLAIN)\s+', cleaned, re.IGNORECASE):
+    if not re.match(r'^(SELECT|SHOW|DESCRIBE|EXPLAIN|WITH)\s+', cleaned, re.IGNORECASE):
         return False
     forbidden = r'\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|REPLACE|GRANT|REVOKE|LOCK|UNLOCK)\b'
     if re.search(forbidden, cleaned, re.IGNORECASE):
@@ -44,7 +45,12 @@ async def execute_report_sql(
     
     start_time = time.time()
     try:
-        result = await db.execute(text(sql))
+        # Extract parameter placeholders like :start_date from sql query
+        raw_params = payload.params if payload.params else {}
+        param_names = set(re.findall(r':([a-zA-Z0-9_]+)', sql))
+        bind_params = {k: raw_params[k] for k in param_names if k in raw_params}
+
+        result = await db.execute(text(sql), bind_params)
         rows = result.mappings().all()
         elapsed = time.time() - start_time
         
