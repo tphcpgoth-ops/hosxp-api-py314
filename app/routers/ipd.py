@@ -267,3 +267,33 @@ async def get_ipd_income_summary(
         "items": categories_map
     }
 
+@router.get("/admit-list", summary="รายชื่อผู้ป่วยที่ Admit อยู่ในปัจจุบัน")
+async def get_ipd_admit_list(
+    db: AsyncSession = Depends(get_db),
+):
+    sql = """
+        SELECT 
+            i.an,
+            i.hn,
+            DATE_FORMAT(i.regdate, '%Y-%m-%d') AS vstdate,
+            CONCAT(COALESCE(p.pname,''), COALESCE(p.fname,''), ' ', COALESCE(p.lname,'')) AS pt_name,
+            TIMESTAMPDIFF(YEAR, p.birthday, CURDATE()) AS age,
+            COALESCE(NULLIF(p.informaddr, ''), CONCAT(COALESCE(p.addrpart,''), IF(p.moopart IS NOT NULL AND p.moopart <> '', CONCAT(' ม.', p.moopart), ''), IF(t.name IS NOT NULL, CONCAT(' ต.', t.name), ''), IF(a.name IS NOT NULL, CONCAT(' อ.', a.name), ''), IF(c.name IS NOT NULL, CONCAT(' จ.', c.name), ''))) AS address,
+            CONCAT(COALESCE(pt.pttype,''), ' ', COALESCE(pt.name,'')) AS pttype_name,
+            COALESCE(w.name, '') AS ward_name,
+            DATEDIFF(CURDATE(), i.regdate) AS adm_days,
+            COALESCE((SELECT SUM(sum_price) FROM opitemrece WHERE an = i.an), 0) AS total_expense
+        FROM ipt i
+        LEFT JOIN patient p ON p.hn = i.hn
+        LEFT JOIN ward w ON w.ward = i.ward
+        LEFT JOIN pttype pt ON pt.pttype = i.pttype
+        LEFT JOIN thaiaddress t ON t.addressid = CONCAT(p.chwpart, p.amppart, p.tmbpart)
+        LEFT JOIN thaiaddress a ON a.addressid = CONCAT(p.chwpart, p.amppart, '00')
+        LEFT JOIN thaiaddress c ON c.addressid = CONCAT(p.chwpart, '0000')
+        WHERE i.dchdate IS NULL
+        ORDER BY i.regdate ASC
+    """
+    result = await db.execute(text(sql))
+    rows = result.mappings().all()
+    return {"total": len(rows), "data": [dict(r) for r in rows]}
+
