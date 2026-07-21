@@ -91,8 +91,8 @@ async def get_ipd_stats_icd10(
                SUM(IF(i.sex = '2',1,0)) AS female
         FROM an_stat i
         LEFT OUTER JOIN icd101 d ON d.code = i.pdx
-        WHERE i.regdate BETWEEN :start AND :end AND pdx <> ''
-        GROUP BY i.pdx
+        WHERE i.dchdate BETWEEN :start AND :end AND i.pdx IS NOT NULL AND i.pdx <> ''
+        GROUP BY i.pdx, d.name, d.tname
         ORDER BY count DESC
         LIMIT 20
     """
@@ -228,37 +228,34 @@ async def get_ipd_income_summary(
 
     sql_income = """
         SELECT 
-            i.income AS income_code,
-            i.name AS income_name,
-            COALESCE(SUM(o.sum_price), 0) AS total_amount
-        FROM income i
-        LEFT JOIN opitemrece o ON o.income = i.income 
-                               AND o.an IS NOT NULL 
-                               AND o.vstdate BETWEEN :start AND :end
-        GROUP BY i.income, i.name
-        ORDER BY i.income ASC
+            COALESCE(SUM(inc01), 0) AS inc01, COALESCE(SUM(inc02), 0) AS inc02, COALESCE(SUM(inc03), 0) AS inc03, COALESCE(SUM(inc04), 0) AS inc04,
+            COALESCE(SUM(inc05), 0) AS inc05, COALESCE(SUM(inc06), 0) AS inc06, COALESCE(SUM(inc07), 0) AS inc07, COALESCE(SUM(inc08), 0) AS inc08,
+            COALESCE(SUM(inc09), 0) AS inc09, COALESCE(SUM(inc10), 0) AS inc10, COALESCE(SUM(inc11), 0) AS inc11, COALESCE(SUM(inc12), 0) AS inc12,
+            COALESCE(SUM(inc13), 0) AS inc13, COALESCE(SUM(inc14), 0) AS inc14, COALESCE(SUM(inc15), 0) AS inc15, COALESCE(SUM(inc16), 0) AS inc16,
+            COALESCE(SUM(inc17), 0) AS inc17, COALESCE(SUM(income), 0) AS total_income
+        FROM an_stat
+        WHERE dchdate BETWEEN :start AND :end
     """
     result = await db.execute(text(sql_income), {"start": start_date, "end": end_date})
-    rows = result.mappings().all()
+    row = result.mappings().first() or {}
 
-    income_dict = {r["income_code"]: float(r["total_amount"]) for r in rows}
-    total_income = sum(income_dict.values())
+    total_income = float(row.get("total_income") or 0.0)
 
-    # Map to standard MoPH/HOSxP report income categories matching user's image
+    # Standard HOSxP report income categories matching user's sample image
     categories_map = [
-        {"code": "01", "name": "ค่าตรวจวินิจฉัยทางเทคนิคการแพทย์และพยาธิวิทยา,ค่าบริการโลหิตและส่วนประกอบของโลหิต", "amount": income_dict.get("06", 0.0) + income_dict.get("05", 0.0)},
-        {"code": "04", "name": "ค่าตรวจวินิจฉัยและรักษาทางรังสีวิทยา", "amount": income_dict.get("07", 0.0)},
-        {"code": "05", "name": "ค่าตรวจวินิจฉัยโดยวิธีพิเศษอื่นๆ,ค่าบริการทางการพยาบาล,ค่าใบรับรองแพทย์", "amount": income_dict.get("11", 0.0) + income_dict.get("10", 0.0) + income_dict.get("18", 0.0)},
-        {"code": "06", "name": "ค่าผ่าตัด ทำคลอด ทำหัตถการและบริการวิสัญญี", "amount": income_dict.get("09", 0.0)},
-        {"code": "07", "name": "ค่าบริการฝังเข็ม การบำบัดของผู้ประกอบโรคศิลปะอื่นๆ", "amount": income_dict.get("14", 0.0)},
-        {"code": "08", "name": "ค่าอวัยวะเทียม อุปกรณ์ในการบำบัดรักษา", "amount": income_dict.get("02", 0.0)},
-        {"code": "09", "name": "ค่าเวชภัณฑ์ที่ไม่ใช่ยา,ค่าอุปกรณ์เครื่องใช้และเครื่องมือทางการแพทย์", "amount": income_dict.get("04", 0.0) + income_dict.get("08", 0.0)},
-        {"code": "11", "name": "ค่าบริการทางทันตกรรม", "amount": income_dict.get("12", 0.0)},
-        {"code": "12", "name": "ค่ายาที่นำไปใช้ต่อที่บ้าน,ค่ายานอกบัญชียาหลักแห่งชาติ,ค่ายาในบัญชียาหลัก", "amount": income_dict.get("19", 0.0) + income_dict.get("80", 0.0) + income_dict.get("03", 0.0)},
-        {"code": "13", "name": "ค่าบริการทางกายภาพบำบัด", "amount": income_dict.get("13", 0.0)},
-        {"code": "14", "name": "ค่าบริการอื่นที่ไม่เกี่ยวข้องกับการรักษาพยาบาล", "amount": income_dict.get("16", 0.0)},
-        {"code": "16", "name": "ค่าอาหาร,ค่าห้อง", "amount": income_dict.get("01", 0.0) + income_dict.get("00", 0.0)},
-        {"code": "17", "name": "ค่าธรรมเนียมบัตรทอง 30 บาท,บริการอื่นๆและส่งเสริมป้องกัน", "amount": income_dict.get("17", 0.0) + income_dict.get("20", 0.0)},
+        {"code": "01", "name": "ค่าตรวจวินิจฉัยทางเทคนิคการแพทย์และพยาธิวิทยา,ค่าบริการโลหิตและส่วนประกอบของโลหิต", "amount": float(row.get("inc06") or 0) + float(row.get("inc05") or 0)},
+        {"code": "04", "name": "ค่าตรวจวินิจฉัยและรักษาทางรังสีวิทยา", "amount": float(row.get("inc07") or 0)},
+        {"code": "05", "name": "ค่าตรวจวินิจฉัยโดยวิธีพิเศษอื่นๆ,ค่าบริการทางการพยาบาล,ค่าใบรับรองแพทย์", "amount": float(row.get("inc11") or 0) + float(row.get("inc10") or 0)},
+        {"code": "06", "name": "ค่าผ่าตัด ทำคลอด ทำหัตถการและบริการวิสัญญี", "amount": float(row.get("inc09") or 0)},
+        {"code": "07", "name": "ค่าบริการฝังเข็ม การบำบัดของผู้ประกอบโรคศิลปะอื่นๆ", "amount": float(row.get("inc14") or 0)},
+        {"code": "08", "name": "ค่าอวัยวะเทียม อุปกรณ์ในการบำบัดรักษา", "amount": float(row.get("inc02") or 0)},
+        {"code": "09", "name": "ค่าเวชภัณฑ์ที่ไม่ใช่ยา,ค่าอุปกรณ์เครื่องใช้และเครื่องมือทางการแพทย์", "amount": float(row.get("inc04") or 0) + float(row.get("inc08") or 0)},
+        {"code": "11", "name": "ค่าบริการทางทันตกรรม", "amount": float(row.get("inc12") or 0)},
+        {"code": "12", "name": "ค่ายาที่นำไปใช้ต่อที่บ้าน,ค่ายานอกบัญชียาหลักแห่งชาติ,ค่ายาในบัญชียาหลัก", "amount": float(row.get("inc03") or 0)},
+        {"code": "13", "name": "ค่าบริการทางกายภาพบำบัด", "amount": float(row.get("inc13") or 0)},
+        {"code": "14", "name": "ค่าบริการอื่นที่ไม่เกี่ยวข้องกับการรักษาพยาบาล", "amount": float(row.get("inc16") or 0)},
+        {"code": "16", "name": "ค่าอาหาร,ค่าห้อง", "amount": float(row.get("inc01") or 0)},
+        {"code": "17", "name": "ค่าธรรมเนียมบัตรทอง 30 บาท,บริการอื่นๆและส่งเสริมป้องกัน", "amount": float(row.get("inc17") or 0)},
     ]
 
     return {
