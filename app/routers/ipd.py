@@ -166,3 +166,104 @@ async def get_ipd_stats_ward_occupancy(
     rows = result.mappings().all()
     return {"fiscal_year": fiscal_year, "data": [dict(r) for r in rows]}
 
+@router.get("/summary-today", summary="สรุปข้อมูลผู้ป่วยใน วันนี้")
+async def get_ipd_summary_today(
+    db: AsyncSession = Depends(get_db),
+):
+    sql_beds = "SELECT COALESCE(SUM(bedcount), 0) AS total_beds FROM ward WHERE ward_active = 'Y'"
+    r_beds = await db.execute(text(sql_beds))
+    total_beds = int(r_beds.scalar() or 0)
+
+    sql_today = """
+        SELECT 
+            SUM(IF(regdate = CURDATE(), 1, 0)) AS new_admit_today,
+            SUM(IF(dchdate = CURDATE(), 1, 0)) AS discharge_today,
+            SUM(IF(dchdate IS NULL, 1, 0)) AS current_admit
+        FROM ipt
+    """
+    r_today = await db.execute(text(sql_today))
+    t_row = r_today.mappings().first() or {}
+
+    new_admit_today = int(t_row.get("new_admit_today") or 0)
+    discharge_today = int(t_row.get("discharge_today") or 0)
+    current_admit = int(t_row.get("current_admit") or 0)
+    available_beds = max(0, total_beds - current_admit)
+
+    occupancy_rate = round((current_admit * 100.0) / total_beds, 2) if total_beds > 0 else 0.0
+
+    sql_rights = """
+        SELECT 
+            SUM(IF(p.hipdata_code IN ('OFC','SSS','LGO'), 1, 0)) AS pttype_pay,
+            SUM(IF(p.hipdata_code = 'UCS', 1, 0)) AS pttype_uc,
+            SUM(IF(p.hipdata_code NOT IN ('OFC','SSS','LGO','UCS') OR p.hipdata_code IS NULL, 1, 0)) AS pttype_other
+        FROM ipt i
+        LEFT JOIN pttype p ON p.pttype = i.pttype
+        WHERE i.dchdate IS NULL
+    """
+    r_rights = await db.execute(text(sql_rights))
+    r_row = r_rights.mappings().first() or {}
+
+    return {
+        "total_beds": total_beds,
+        "new_admit_today": new_admit_today,
+        "discharge_today": discharge_today,
+        "current_admit": current_admit,
+        "available_beds": available_beds,
+        "transfer_today": 0,
+        "occupancy_rate": occupancy_rate,
+        "pttype_pay": int(r_row.get("pttype_pay") or 0),
+        "pttype_uc": int(r_row.get("pttype_uc") or 0),
+        "pttype_other": int(r_row.get("pttype_other") or 0),
+    }
+
+@router.get("/income-summary", summary="สรุปค่าใช้จ่ายผู้ป่วยในรวม")
+async def get_ipd_income_summary(
+    fiscal_year: int = Query(default=date.today().year + (1 if date.today().month > 9 else 0) + 543),
+    db: AsyncSession = Depends(get_db),
+):
+    year_end = fiscal_year - 543
+    year_start = year_end - 1
+    start_date = f"{year_start}-10-01"
+    end_date = f"{year_end}-09-30"
+
+    sql_income = """
+        SELECT 
+            i.income AS income_code,
+            i.name AS income_name,
+            COALESCE(SUM(o.sum_price), 0) AS total_amount
+        FROM income i
+        LEFT JOIN opitemrece o ON o.income = i.income 
+                               AND o.an IS NOT NULL 
+                               AND o.vstdate BETWEEN :start AND :end
+        GROUP BY i.income, i.name
+        ORDER BY i.income ASC
+    """
+    result = await db.execute(text(sql_income), {"start": start_date, "end": end_date})
+    rows = result.mappings().all()
+
+    income_dict = {r["income_code"]: float(r["total_amount"]) for r in rows}
+    total_income = sum(income_dict.values())
+
+    # Map to standard MoPH/HOSxP report income categories matching user's image
+    categories_map = [
+        {"code": "01", "name": "ค่าตรวจวินิจฉัยทางเทคนิคการแพทย์และพยาธิวิทยา,ค่าบริการโลหิตและส่วนประกอบของโลหิต", "amount": income_dict.get("06", 0.0) + income_dict.get("05", 0.0)},
+        {"code": "04", "name": "ค่าตรวจวินิจฉัยและรักษาทางรังสีวิทยา", "amount": income_dict.get("07", 0.0)},
+        {"code": "05", "name": "ค่าตรวจวินิจฉัยโดยวิธีพิเศษอื่นๆ,ค่าบริการทางการพยาบาล,ค่าใบรับรองแพทย์", "amount": income_dict.get("11", 0.0) + income_dict.get("10", 0.0) + income_dict.get("18", 0.0)},
+        {"code": "06", "name": "ค่าผ่าตัด ทำคลอด ทำหัตถการและบริการวิสัญญี", "amount": income_dict.get("09", 0.0)},
+        {"code": "07", "name": "ค่าบริการฝังเข็ม การบำบัดของผู้ประกอบโรคศิลปะอื่นๆ", "amount": income_dict.get("14", 0.0)},
+        {"code": "08", "name": "ค่าอวัยวะเทียม อุปกรณ์ในการบำบัดรักษา", "amount": income_dict.get("02", 0.0)},
+        {"code": "09", "name": "ค่าเวชภัณฑ์ที่ไม่ใช่ยา,ค่าอุปกรณ์เครื่องใช้และเครื่องมือทางการแพทย์", "amount": income_dict.get("04", 0.0) + income_dict.get("08", 0.0)},
+        {"code": "11", "name": "ค่าบริการทางทันตกรรม", "amount": income_dict.get("12", 0.0)},
+        {"code": "12", "name": "ค่ายาที่นำไปใช้ต่อที่บ้าน,ค่ายานอกบัญชียาหลักแห่งชาติ,ค่ายาในบัญชียาหลัก", "amount": income_dict.get("19", 0.0) + income_dict.get("80", 0.0) + income_dict.get("03", 0.0)},
+        {"code": "13", "name": "ค่าบริการทางกายภาพบำบัด", "amount": income_dict.get("13", 0.0)},
+        {"code": "14", "name": "ค่าบริการอื่นที่ไม่เกี่ยวข้องกับการรักษาพยาบาล", "amount": income_dict.get("16", 0.0)},
+        {"code": "16", "name": "ค่าอาหาร,ค่าห้อง", "amount": income_dict.get("01", 0.0) + income_dict.get("00", 0.0)},
+        {"code": "17", "name": "ค่าธรรมเนียมบัตรทอง 30 บาท,บริการอื่นๆและส่งเสริมป้องกัน", "amount": income_dict.get("17", 0.0) + income_dict.get("20", 0.0)},
+    ]
+
+    return {
+        "fiscal_year": fiscal_year,
+        "total_income": total_income,
+        "items": categories_map
+    }
+
