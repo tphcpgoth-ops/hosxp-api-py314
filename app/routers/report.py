@@ -82,3 +82,29 @@ async def execute_report_sql(
             status_code=500,
             detail=f"ไม่สามารถประมวลผล SQL ได้ หรือไม่สามารถเชื่อมต่อฐานข้อมูล HOSxP: {str(e)}"
         )
+
+@router.get("/master/kskdepartment", summary="ดึงรายการห้องตรวจ (kskdepartment) สำหรับใช้ในตัวกรองรายงาน", dependencies=[Depends(validate_api_key)])
+async def get_master_kskdepartment(db: AsyncSession = Depends(get_db)):
+    try:
+        sql = "SELECT depcode, department FROM kskdepartment WHERE depcode IS NOT NULL AND department IS NOT NULL AND department != '' ORDER BY depcode"
+        result = await db.execute(text(sql))
+        rows = result.mappings().all()
+        return {
+            "success": True,
+            "data": [{"depcode": str(r["depcode"]), "department": str(r["department"])} for r in rows]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ไม่สามารถดึงข้อมูล kskdepartment ได้: {str(e)}")
+
+@router.get("/master/spclty", summary="ดึงรายการแผนก/สาขาการรักษา (spclty) สำหรับใช้ในตัวกรองรายงาน", dependencies=[Depends(validate_api_key)])
+async def get_master_spclty(db: AsyncSession = Depends(get_db)):
+    try:
+        sql = "SELECT spclty, name FROM spclty WHERE spclty IS NOT NULL AND name IS NOT NULL AND name != '' ORDER BY spclty"
+        result = await db.execute(text(sql))
+        rows = result.mappings().all()
+        return {
+            "success": True,
+            "data": [{"spclty": str(r["spclty"]), "name": str(r["name"])} for r in rows]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ไม่สามารถดึงข้อมูล spclty ได้: {str(e)}")
