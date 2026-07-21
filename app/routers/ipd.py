@@ -216,16 +216,10 @@ async def get_ipd_summary_today(
         "pttype_other": int(r_row.get("pttype_other") or 0),
     }
 
-@router.get("/income-summary", summary="สรุปค่าใช้จ่ายผู้ป่วยในรวม")
+@router.get("/income-summary", summary="สรุปค่าใช้จ่ายผู้ป่วยในรวมที่กำลัง Admit อยู่ในปัจจุบัน")
 async def get_ipd_income_summary(
-    fiscal_year: int = Query(default=date.today().year + (1 if date.today().month > 9 else 0) + 543),
     db: AsyncSession = Depends(get_db),
 ):
-    year_end = fiscal_year - 543
-    year_start = year_end - 1
-    start_date = f"{year_start}-10-01"
-    end_date = f"{year_end}-09-30"
-
     sql_income = """
         SELECT 
             COALESCE(SUM(inc01), 0) AS inc01, COALESCE(SUM(inc02), 0) AS inc02, COALESCE(SUM(inc03), 0) AS inc03, COALESCE(SUM(inc04), 0) AS inc04,
@@ -234,9 +228,9 @@ async def get_ipd_income_summary(
             COALESCE(SUM(inc13), 0) AS inc13, COALESCE(SUM(inc14), 0) AS inc14, COALESCE(SUM(inc15), 0) AS inc15, COALESCE(SUM(inc16), 0) AS inc16,
             COALESCE(SUM(inc17), 0) AS inc17, COALESCE(SUM(income), 0) AS total_income
         FROM an_stat
-        WHERE dchdate BETWEEN :start AND :end
+        WHERE dchdate IS NULL AND ward IS NOT NULL
     """
-    result = await db.execute(text(sql_income), {"start": start_date, "end": end_date})
+    result = await db.execute(text(sql_income))
     row = result.mappings().first() or {}
 
     total_income = float(row.get("total_income") or 0.0)
@@ -259,7 +253,6 @@ async def get_ipd_income_summary(
     ]
 
     return {
-        "fiscal_year": fiscal_year,
         "total_income": total_income,
         "items": categories_map
     }
