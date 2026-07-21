@@ -100,3 +100,69 @@ async def get_ipd_stats_icd10(
     rows = result.mappings().all()
     return {"fiscal_year": fiscal_year, "data": [dict(r) for r in rows]}
 
+@router.get("/stats-ward-monthly", summary="สรุปผู้ป่วยในรายเดือนแยกตามหอผู้ป่วย (ตึก)")
+async def get_ipd_stats_ward_monthly(
+    fiscal_year: int = Query(default=date.today().year + (1 if date.today().month > 9 else 0) + 543),
+    db: AsyncSession = Depends(get_db),
+):
+    year_end = fiscal_year - 543
+    year_start = year_end - 1
+    start_date = f"{year_start}-10-01"
+    end_date = f"{year_end}-09-30"
+
+    sql = """
+        SELECT 
+            w.ward, 
+            w.name AS ward_name,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '10', 1, 0)) AS m10,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '11', 1, 0)) AS m11,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '12', 1, 0)) AS m12,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '01', 1, 0)) AS m01,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '02', 1, 0)) AS m02,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '03', 1, 0)) AS m03,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '04', 1, 0)) AS m04,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '05', 1, 0)) AS m05,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '06', 1, 0)) AS m06,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '07', 1, 0)) AS m07,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '08', 1, 0)) AS m08,
+            SUM(IF(DATE_FORMAT(i.regdate, '%m') = '09', 1, 0)) AS m09,
+            COUNT(i.an) AS total
+        FROM ward w
+        LEFT JOIN ipt i ON i.ward = w.ward AND i.regdate BETWEEN :start AND :end
+        WHERE w.ward_active = 'Y'
+        GROUP BY w.ward, w.name
+        ORDER BY w.ward ASC
+    """
+    result = await db.execute(text(sql), {"start": start_date, "end": end_date})
+    rows = result.mappings().all()
+    return {"fiscal_year": fiscal_year, "data": [dict(r) for r in rows]}
+
+@router.get("/stats-ward-occupancy", summary="อัตราการครองเตียงแยกตามหอผู้ป่วย (ตึก)")
+async def get_ipd_stats_ward_occupancy(
+    fiscal_year: int = Query(default=date.today().year + (1 if date.today().month > 9 else 0) + 543),
+    db: AsyncSession = Depends(get_db),
+):
+    year_end = fiscal_year - 543
+    year_start = year_end - 1
+    start_date = f"{year_start}-10-01"
+    end_date = f"{year_end}-09-30"
+
+    sql = """
+        SELECT 
+            w.ward, 
+            w.name AS ward_name,
+            COALESCE(w.bedcount, 0) AS bedcount,
+            COUNT(i.an) AS patient_count,
+            COALESCE(SUM(i.admdate), 0) AS total_admdate,
+            IF(COUNT(i.an) > 0, SUM(i.admdate) / COUNT(i.an), 0) AS avg_admdate,
+            IF(w.bedcount > 0, (SUM(i.admdate) * 100) / (w.bedcount * 365), 0) AS occupancy_rate
+        FROM ward w
+        LEFT JOIN an_stat i ON i.ward = w.ward AND i.dchdate BETWEEN :start AND :end
+        WHERE w.ward_active = 'Y'
+        GROUP BY w.ward, w.name, w.bedcount
+        ORDER BY w.ward ASC
+    """
+    result = await db.execute(text(sql), {"start": start_date, "end": end_date})
+    rows = result.mappings().all()
+    return {"fiscal_year": fiscal_year, "data": [dict(r) for r in rows]}
+
