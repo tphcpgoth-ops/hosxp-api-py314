@@ -216,10 +216,16 @@ async def get_ipd_summary_today(
         "pttype_other": int(r_row.get("pttype_other") or 0),
     }
 
-@router.get("/income-summary", summary="สรุปค่าใช้จ่ายผู้ป่วยในรวมที่กำลัง Admit อยู่ในปัจจุบัน")
+@router.get("/income-summary", summary="สรุปค่าใช้จ่ายผู้ป่วยในรวม")
 async def get_ipd_income_summary(
+    fiscal_year: int = Query(default=date.today().year + (1 if date.today().month > 9 else 0) + 543),
     db: AsyncSession = Depends(get_db),
 ):
+    year_end = fiscal_year - 543
+    year_start = year_end - 1
+    start_date = f"{year_start}-10-01"
+    end_date = f"{year_end}-09-30"
+
     sql_income = """
         SELECT 
             COALESCE(SUM(inc01), 0) AS inc01, COALESCE(SUM(inc02), 0) AS inc02, COALESCE(SUM(inc03), 0) AS inc03, COALESCE(SUM(inc04), 0) AS inc04,
@@ -228,31 +234,32 @@ async def get_ipd_income_summary(
             COALESCE(SUM(inc13), 0) AS inc13, COALESCE(SUM(inc14), 0) AS inc14, COALESCE(SUM(inc15), 0) AS inc15, COALESCE(SUM(inc16), 0) AS inc16,
             COALESCE(SUM(inc17), 0) AS inc17, COALESCE(SUM(income), 0) AS total_income
         FROM an_stat
-        WHERE dchdate IS NULL AND ward IS NOT NULL
+        WHERE dchdate BETWEEN :start AND :end
     """
-    result = await db.execute(text(sql_income))
+    result = await db.execute(text(sql_income), {"start": start_date, "end": end_date})
     row = result.mappings().first() or {}
 
     total_income = float(row.get("total_income") or 0.0)
 
     # Standard HOSxP report income categories matching user's sample image
     categories_map = [
-        {"code": "01", "name": "ค่าตรวจวินิจฉัยทางเทคนิคการแพทย์และพยาธิวิทยา,ค่าบริการโลหิตและส่วนประกอบของโลหิต", "amount": float(row.get("inc06") or 0) + float(row.get("inc05") or 0)},
-        {"code": "04", "name": "ค่าตรวจวินิจฉัยและรักษาทางรังสีวิทยา", "amount": float(row.get("inc07") or 0)},
-        {"code": "05", "name": "ค่าตรวจวินิจฉัยโดยวิธีพิเศษอื่นๆ,ค่าบริการทางการพยาบาล,ค่าใบรับรองแพทย์", "amount": float(row.get("inc11") or 0) + float(row.get("inc10") or 0)},
-        {"code": "06", "name": "ค่าผ่าตัด ทำคลอด ทำหัตถการและบริการวิสัญญี", "amount": float(row.get("inc09") or 0)},
-        {"code": "07", "name": "ค่าบริการฝังเข็ม การบำบัดของผู้ประกอบโรคศิลปะอื่นๆ", "amount": float(row.get("inc14") or 0)},
-        {"code": "08", "name": "ค่าอวัยวะเทียม อุปกรณ์ในการบำบัดรักษา", "amount": float(row.get("inc02") or 0)},
-        {"code": "09", "name": "ค่าเวชภัณฑ์ที่ไม่ใช่ยา,ค่าอุปกรณ์เครื่องใช้และเครื่องมือทางการแพทย์", "amount": float(row.get("inc04") or 0) + float(row.get("inc08") or 0)},
-        {"code": "11", "name": "ค่าบริการทางทันตกรรม", "amount": float(row.get("inc12") or 0)},
-        {"code": "12", "name": "ค่ายาที่นำไปใช้ต่อที่บ้าน,ค่ายานอกบัญชียาหลักแห่งชาติ,ค่ายาในบัญชียาหลัก", "amount": float(row.get("inc03") or 0)},
+        {"code": "01", "name": "ค่าตรวจวินิจฉัยทางเทคนิคการแพทย์และพยาธิวิทยา,ค่าบริการโลหิตและส่วนประกอบของโลหิต", "amount": float(row.get("inc01") or 0)},
+        {"code": "04", "name": "ค่าตรวจวินิจฉัยและรักษาทางรังสีวิทยา", "amount": float(row.get("inc04") or 0)},
+        {"code": "05", "name": "ค่าตรวจวินิจฉัยโดยวิธีพิเศษอื่นๆ,ค่าบริการทางการพยาบาล,ค่าใบรับรองแพทย์", "amount": float(row.get("inc05") or 0)},
+        {"code": "06", "name": "ค่าผ่าตัด ทำคลอด ทำหัตถการและบริการวิสัญญี", "amount": float(row.get("inc06") or 0)},
+        {"code": "07", "name": "ค่าบริการฝังเข็ม การบำบัดของผู้ประกอบโรคศิลปะอื่นๆ", "amount": float(row.get("inc07") or 0)},
+        {"code": "08", "name": "ค่าอวัยวะเทียม อุปกรณ์ในการบำบัดรักษา", "amount": float(row.get("inc08") or 0)},
+        {"code": "09", "name": "ค่าเวชภัณฑ์ที่ไม่ใช่ยา,ค่าอุปกรณ์เครื่องใช้และเครื่องมือทางการแพทย์", "amount": float(row.get("inc09") or 0)},
+        {"code": "11", "name": "ค่าบริการทางทันตกรรม", "amount": float(row.get("inc11") or 0)},
+        {"code": "12", "name": "ค่ายาที่นำไปใช้ต่อที่บ้าน,ค่ายานอกบัญชียาหลักแห่งชาติ,ค่ายาในบัญชียาหลัก", "amount": float(row.get("inc12") or 0)},
         {"code": "13", "name": "ค่าบริการทางกายภาพบำบัด", "amount": float(row.get("inc13") or 0)},
-        {"code": "14", "name": "ค่าบริการอื่นที่ไม่เกี่ยวข้องกับการรักษาพยาบาล", "amount": float(row.get("inc16") or 0)},
-        {"code": "16", "name": "ค่าอาหาร,ค่าห้อง", "amount": float(row.get("inc01") or 0)},
+        {"code": "14", "name": "ค่าบริการอื่นที่ไม่เกี่ยวข้องกับการรักษาพยาบาล", "amount": float(row.get("inc14") or 0)},
+        {"code": "16", "name": "ค่าอาหาร,ค่าห้อง", "amount": float(row.get("inc16") or 0)},
         {"code": "17", "name": "ค่าธรรมเนียมบัตรทอง 30 บาท,บริการอื่นๆและส่งเสริมป้องกัน", "amount": float(row.get("inc17") or 0)},
     ]
 
     return {
+        "fiscal_year": fiscal_year,
         "total_income": total_income,
         "items": categories_map
     }
