@@ -10,8 +10,7 @@ from app.core.security import validate_api_key
 
 router = APIRouter(
     prefix="/refer",
-    tags=["Referral"],
-    dependencies=[Depends(validate_api_key)]
+    tags=["Referral"]
 )
 
 logger = logging.getLogger(__name__)
@@ -325,7 +324,7 @@ async def get_refer_triage_levels(
         "triage_levels": triage_data
     }
 
-@router.get("/referout-list", summary="รายชื่อเคสส่งต่อ (Refer Out Cases List)")
+@router.get("/referout-list", summary="รายชื่อเคสส่งต่อ (Refer Out Cases List)", dependencies=[Depends(validate_api_key)])
 async def get_referout_list(
     fiscal_year: int = Query(default=date.today().year + (1 if date.today().month > 9 else 0) + 543),
     db: AsyncSession = Depends(get_db),
@@ -345,7 +344,7 @@ async def get_referout_list(
             r.referout_emergency_type_id
         FROM referout r
         WHERE r.refer_date BETWEEN :start AND :end
-        ORDER BY r.refer_date DESC, r.referout_id DESC
+        ORDER BY r.referout_id DESC
         LIMIT 50
     """
     res = await db.execute(text(sql), {"start": start_date, "end": end_date})
