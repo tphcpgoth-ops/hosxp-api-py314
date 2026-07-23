@@ -78,7 +78,6 @@ async def get_refer_trends(
         dict_out = {r["day_num"]: r["count"] for r in res_out.mappings().all() if r["day_num"] is not None}
         dict_in = {r["day_num"]: r["count"] for r in res_in.mappings().all() if r["day_num"] is not None}
 
-        # DAYOFWEEK: 1=Sun, 2=Mon, 3=Tue, 4=Wed, 5=Thu, 6=Fri, 7=Sat
         days_map = [
             {"day": "จันทร์", "day_num": 2},
             {"day": "อังคาร", "day_num": 3},
@@ -98,16 +97,16 @@ async def get_refer_trends(
         ]
     elif mode == "hourly":
         sql_out = """
-            SELECT HOUR(COALESCE(refer_time, '00:00:00')) AS hr, COUNT(*) AS count
+            SELECT CAST(SUBSTRING(refer_time, 1, 2) AS UNSIGNED) AS hr, COUNT(*) AS count
             FROM referout
-            WHERE refer_date BETWEEN :start AND :end
-            GROUP BY HOUR(COALESCE(refer_time, '00:00:00'))
+            WHERE refer_date BETWEEN :start AND :end AND refer_time IS NOT NULL AND refer_time <> ''
+            GROUP BY CAST(SUBSTRING(refer_time, 1, 2) AS UNSIGNED)
         """
         sql_in = """
-            SELECT HOUR(COALESCE(refer_time, '00:00:00')) AS hr, COUNT(*) AS count
+            SELECT CAST(SUBSTRING(refer_time, 1, 2) AS UNSIGNED) AS hr, COUNT(*) AS count
             FROM referin
-            WHERE refer_date BETWEEN :start AND :end
-            GROUP BY HOUR(COALESCE(refer_time, '00:00:00'))
+            WHERE refer_date BETWEEN :start AND :end AND refer_time IS NOT NULL AND refer_time <> ''
+            GROUP BY CAST(SUBSTRING(refer_time, 1, 2) AS UNSIGNED)
         """
         res_out = await db.execute(text(sql_out), {"start": start_date, "end": end_date})
         res_in = await db.execute(text(sql_in), {"start": start_date, "end": end_date})
@@ -123,7 +122,7 @@ async def get_refer_trends(
             }
             for h in range(24)
         ]
-    else: # monthly (default)
+    else: # monthly
         sql_out = """
             SELECT MONTH(refer_date) AS m, COUNT(*) AS count
             FROM referout
@@ -170,42 +169,45 @@ async def get_refer_hospitals(
 ):
     start_date, end_date = get_fiscal_dates(fiscal_year)
 
-    # Top Refer Out Hospitals
+    # Fast Refer Out Hospitals
     sql_out = """
-        SELECT 
-            r.hospcode,
-            COALESCE(NULLIF(h.name, ''), r.hospcode) AS hospname,
-            COUNT(*) AS count
-        FROM referout r
-        LEFT JOIN hospcode h ON h.hospcode = r.hospcode
-        WHERE r.refer_date BETWEEN :start AND :end AND r.hospcode IS NOT NULL AND r.hospcode <> ''
-        GROUP BY r.hospcode, h.name
+        SELECT hospcode, COUNT(*) AS count
+        FROM referout
+        WHERE refer_date BETWEEN :start AND :end AND hospcode IS NOT NULL AND hospcode <> ''
+        GROUP BY hospcode
         ORDER BY count DESC
         LIMIT 8
     """
     res_out = await db.execute(text(sql_out), {"start": start_date, "end": end_date})
-    refer_out_hospitals = [
-        {"hospcode": r["hospcode"], "name": r["hospname"], "count": int(r["count"])}
-        for r in res_out.mappings().all()
-    ]
+    out_rows = res_out.mappings().all()
 
-    # Top Refer In Hospitals
+    # Fast Refer In Hospitals
     sql_in = """
-        SELECT 
-            r.hospcode,
-            COALESCE(NULLIF(h.name, ''), r.hospcode) AS hospname,
-            COUNT(*) AS count
-        FROM referin r
-        LEFT JOIN hospcode h ON h.hospcode = r.hospcode
-        WHERE r.refer_date BETWEEN :start AND :end AND r.hospcode IS NOT NULL AND r.hospcode <> ''
-        GROUP BY r.hospcode, h.name
+        SELECT hospcode, COUNT(*) AS count
+        FROM referin
+        WHERE refer_date BETWEEN :start AND :end AND hospcode IS NOT NULL AND hospcode <> ''
+        GROUP BY hospcode
         ORDER BY count DESC
         LIMIT 8
     """
     res_in = await db.execute(text(sql_in), {"start": start_date, "end": end_date})
+    in_rows = res_in.mappings().all()
+
+    # Batch lookup hospcode names
+    h_codes = list(set([r["hospcode"] for r in out_rows] + [r["hospcode"] for r in in_rows]))
+    h_map = {}
+    if h_codes:
+        sql_names = "SELECT hospcode, name FROM hospcode WHERE hospcode IN :codes"
+        res_names = await db.execute(text(sql_names), {"codes": tuple(h_codes)})
+        h_map = {r["hospcode"]: r["name"] for r in res_names.mappings().all() if r["name"]}
+
+    refer_out_hospitals = [
+        {"hospcode": r["hospcode"], "name": h_map.get(r["hospcode"], r["hospcode"]), "count": int(r["count"])}
+        for r in out_rows
+    ]
     refer_in_hospitals = [
-        {"hospcode": r["hospcode"], "name": r["hospname"], "count": int(r["count"])}
-        for r in res_in.mappings().all()
+        {"hospcode": r["hospcode"], "name": h_map.get(r["hospcode"], r["hospcode"]), "count": int(r["count"])}
+        for r in in_rows
     ]
 
     return {
@@ -330,32 +332,77 @@ async def get_referout_list(
 ):
     start_date, end_date = get_fiscal_dates(fiscal_year)
 
+    # 1. Fetch top 50 recent referout cases
     sql = """
         SELECT 
             r.referout_id,
             DATE_FORMAT(r.refer_date, '%Y-%m-%d') AS refer_date,
             COALESCE(r.refer_time, '-') AS refer_time,
             r.hn,
-            CONCAT(COALESCE(p.pname,''), COALESCE(p.fname,''), ' ', COALESCE(p.lname,'')) AS pt_name,
-            COALESCE(h.name, r.hospcode) AS dest_hospname,
-            COALESCE(r.pdx, '-') AS pdx,
-            COALESCE(i.name, '-') AS diag,
-            COALESCE(cs.name, 'ไม่ระบุ') AS cause_name,
-            COALESCE(e.referout_emergency_type_name, 'ทั่วไป') AS emergency_name
+            r.hospcode,
+            r.pdx,
+            r.rfrcs,
+            r.referout_emergency_type_id
         FROM referout r
-        LEFT JOIN patient p ON p.hn = r.hn
-        LEFT JOIN hospcode h ON h.hospcode = r.hospcode
-        LEFT JOIN icd101 i ON i.code = r.pdx
-        LEFT JOIN rfrcs cs ON cs.rfrcs = r.rfrcs
-        LEFT JOIN referout_emergency_type e ON e.referout_emergency_type_id = r.referout_emergency_type_id
         WHERE r.refer_date BETWEEN :start AND :end
-        ORDER BY r.refer_date DESC, r.refer_time DESC
-        LIMIT 100
+        ORDER BY r.refer_date DESC, r.referout_id DESC
+        LIMIT 50
     """
     res = await db.execute(text(sql), {"start": start_date, "end": end_date})
     rows = res.mappings().all()
 
+    if not rows:
+        return {"fiscal_year": fiscal_year, "data": []}
+
+    # 2. Extract keys for batch lookup
+    hn_list = tuple(set(r["hn"] for r in rows if r["hn"]))
+    hosp_list = tuple(set(r["hospcode"] for r in rows if r["hospcode"]))
+    pdx_list = tuple(set(r["pdx"] for r in rows if r["pdx"]))
+    rfrcs_list = tuple(set(r["rfrcs"] for r in rows if r["rfrcs"]))
+    em_list = tuple(set(r["referout_emergency_type_id"] for r in rows if r["referout_emergency_type_id"]))
+
+    pt_map = {}
+    if hn_list:
+        res_pt = await db.execute(text("SELECT hn, CONCAT(COALESCE(pname,''), fname, ' ', lname) as name FROM patient WHERE hn IN :hns"), {"hns": hn_list})
+        pt_map = {r["hn"]: r["name"] for r in res_pt.mappings().all()}
+
+    hosp_map = {}
+    if hosp_list:
+        res_hosp = await db.execute(text("SELECT hospcode, name FROM hospcode WHERE hospcode IN :codes"), {"codes": hosp_list})
+        hosp_map = {r["hospcode"]: r["name"] for r in res_hosp.mappings().all() if r["name"]}
+
+    diag_map = {}
+    if pdx_list:
+        res_diag = await db.execute(text("SELECT code, name FROM icd101 WHERE code IN :codes"), {"codes": pdx_list})
+        diag_map = {r["code"]: r["name"] for r in res_diag.mappings().all()}
+
+    cause_map = {}
+    if rfrcs_list:
+        res_cause = await db.execute(text("SELECT rfrcs, name FROM rfrcs WHERE rfrcs IN :codes"), {"codes": rfrcs_list})
+        cause_map = {r["rfrcs"]: r["name"] for r in res_cause.mappings().all()}
+
+    em_map = {}
+    if em_list:
+        res_em = await db.execute(text("SELECT referout_emergency_type_id, referout_emergency_type_name FROM referout_emergency_type WHERE referout_emergency_type_id IN :codes"), {"codes": em_list})
+        em_map = {r["referout_emergency_type_id"]: r["referout_emergency_type_name"] for r in res_em.mappings().all()}
+
+    result_data = [
+        {
+            "referout_id": r["referout_id"],
+            "refer_date": r["refer_date"],
+            "refer_time": r["refer_time"],
+            "hn": r["hn"],
+            "pt_name": pt_map.get(r["hn"], "-"),
+            "dest_hospname": hosp_map.get(r["hospcode"], r["hospcode"] or "-"),
+            "pdx": r["pdx"] or "-",
+            "diag": diag_map.get(r["pdx"], "-"),
+            "cause_name": cause_map.get(r["rfrcs"], "ไม่ระบุ"),
+            "emergency_name": em_map.get(r["referout_emergency_type_id"], "ทั่วไป")
+        }
+        for r in rows
+    ]
+
     return {
         "fiscal_year": fiscal_year,
-        "data": [dict(r) for r in rows]
+        "data": result_data
     }
