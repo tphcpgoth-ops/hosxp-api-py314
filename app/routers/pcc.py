@@ -33,7 +33,7 @@ async def get_pcc_stats_summary(
                COUNT(*) AS total,
                DATE_FORMAT(o.vstdate,'%Y')+543 AS AY, DATE_FORMAT(o.vstdate,'%m') AS AM
         FROM ovst o
-        WHERE o.vstdate BETWEEN :start AND :end AND o.main_dep = '085'
+        WHERE o.vstdate BETWEEN :start AND :end AND (o.main_dep = '085' OR o.cur_dep = '085')
         GROUP BY DATE_FORMAT(o.vstdate,'%Y-%m')
         ORDER BY DATE_FORMAT(o.vstdate,'%Y-%m') ASC
     """
@@ -59,7 +59,7 @@ async def get_pcc_stats_inscl(
         LEFT OUTER JOIN vn_stat v ON v.vn = o.vn
         LEFT OUTER JOIN pttype pt ON pt.pttype = v.pttype
         LEFT OUTER JOIN nhso_inscl_code h ON h.inscl_code = pt.hipdata_code
-        WHERE o.vstdate BETWEEN :start AND :end AND o.main_dep = '085'
+        WHERE o.vstdate BETWEEN :start AND :end AND (o.main_dep = '085' OR o.cur_dep = '085')
         GROUP BY pt.hipdata_code, h.inscl_name
         ORDER BY COUNT(DISTINCT o.vn) DESC
     """
@@ -86,7 +86,7 @@ async def get_pcc_stats_diseases(
         FROM ovst o
         LEFT OUTER JOIN vn_stat v ON v.vn = o.vn
         LEFT OUTER JOIN icd101 i ON i.code = v.pdx
-        WHERE o.vstdate BETWEEN :start AND :end AND o.main_dep = '085' AND v.pdx IS NOT NULL AND v.pdx <> ''
+        WHERE o.vstdate BETWEEN :start AND :end AND (o.main_dep = '085' OR o.cur_dep = '085') AND v.pdx IS NOT NULL AND v.pdx <> ''
         GROUP BY v.pdx, i.name
         ORDER BY COUNT(DISTINCT v.vn) DESC
         LIMIT 50
@@ -135,7 +135,7 @@ async def get_pcc_stats_inscl_breakdown(
         FROM ovst o
         LEFT OUTER JOIN vn_stat v ON v.vn = o.vn
         LEFT OUTER JOIN pttype pt ON pt.pttype = v.pttype
-        WHERE o.vstdate BETWEEN :start AND :end AND o.main_dep = '085'
+        WHERE o.vstdate BETWEEN :start AND :end AND (o.main_dep = '085' OR o.cur_dep = '085')
         GROUP BY v.pttype, pt.name
         ORDER BY COUNT(DISTINCT o.hn) DESC
         LIMIT 50
@@ -160,7 +160,7 @@ async def get_pcc_stats_inscl_breakdown(
         FROM ovst o
         LEFT OUTER JOIN vn_stat v ON v.vn = o.vn
         LEFT OUTER JOIN pttype pt ON pt.pttype = v.pttype
-        WHERE o.vstdate BETWEEN :start AND :end AND o.main_dep = '085'
+        WHERE o.vstdate BETWEEN :start AND :end AND (o.main_dep = '085' OR o.cur_dep = '085')
         GROUP BY v.pttype, pt.name
         ORDER BY COUNT(*) DESC
         LIMIT 50
@@ -196,7 +196,7 @@ async def get_pcc_patients(
         LEFT OUTER JOIN thaiaddress t ON t.addressid = CONCAT(p.chwpart, p.amppart, p.tmbpart)
         LEFT OUTER JOIN pttype pt ON pt.pttype = v.pttype
         LEFT OUTER JOIN icd101 i ON i.code = v.pdx
-        WHERE DATE_FORMAT(o.vstdate, '%Y-%m') = :ym AND o.main_dep = '085'
+        WHERE DATE_FORMAT(o.vstdate, '%Y-%m') = :ym AND (o.main_dep = '085' OR o.cur_dep = '085')
         ORDER BY o.vstdate ASC
         LIMIT 1000
     """
