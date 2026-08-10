@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from datetime import date
+import datetime
+import calendar
 from typing import Optional
 
 from app.core.database import get_db
@@ -293,4 +295,129 @@ async def get_ipd_admit_list(
     result = await db.execute(text(sql))
     rows = result.mappings().all()
     return {"total": len(rows), "data": [dict(r) for r in rows]}
+
+
+@router.get("/daily-activity-report", summary="รายงานบันทึกกิจกรรมประจำวันผู้ป่วยใน (ตามตึกผู้ป่วย)")
+async def get_ipd_daily_activity_report(
+    ward: str = Query(default="01", description="รหัสตึกผู้ป่วย"),
+    ym: Optional[str] = Query(default=None, description="ปี-เดือน ค.ศ. เช่น 2026-07"),
+    db: AsyncSession = Depends(get_db),
+):
+    if not ym:
+        today = date.today()
+        ym = f"{today.year}-{today.month:02d}"
+    
+    try:
+        y, m = map(int, ym.split('-'))
+        _, last_day = calendar.monthrange(y, m)
+    except Exception:
+        raise HTTPException(status_code=400, detail="รูปแบบ ym ไม่ถูกต้อง ต้องเป็น YYYY-MM")
+
+    start_date = f"{ym}-01"
+    end_date = f"{ym}-{last_day:02d}"
+
+    # 1. Ward info
+    ward_sql = "SELECT ward, name, bedcount FROM ward WHERE ward = :ward"
+    ward_res = await db.execute(text(ward_sql), {"ward": ward})
+    ward_info = ward_res.mappings().first() or {"ward": ward, "name": f"ตึก {ward}", "bedcount": 30}
+    bed_count = float(ward_info.get("bedcount") or 30)
+    if bed_count <= 0:
+        bed_count = 30
+
+    # 2. Active inpatients during month
+    active_sql = """
+        SELECT an, regdate, dchdate, spclty, ipt_type
+        FROM ipt
+        WHERE ward = :ward
+          AND regdate <= :end_date
+          AND (dchdate IS NULL OR dchdate >= :start_date)
+    """
+    active_res = await db.execute(text(active_sql), {"ward": ward, "start_date": start_date, "end_date": end_date})
+    active_rows = active_res.mappings().all()
+
+    # 3. Discharged inpatients during month
+    dch_sql = """
+        SELECT an, regdate, dchdate, dchtype, DATEDIFF(dchdate, regdate) AS los
+        FROM ipt
+        WHERE ward = :ward
+          AND dchdate BETWEEN :start_date AND :end_date
+    """
+    dch_res = await db.execute(text(dch_sql), {"ward": ward, "start_date": start_date, "end_date": end_date})
+    dch_rows = dch_res.mappings().all()
+
+    days_data = []
+    tot_2_1 = tot_2_2 = tot_2_3 = tot_2_4 = tot_2_5 = 0
+    tot_2_6 = tot_2_7 = tot_2_8 = tot_2_9 = tot_2_10 = 0
+    tot_4_los = tot_5_total = tot_5_1 = tot_5_2 = tot_5_3 = tot_5_4 = tot_5_5 = 0
+
+    for day in range(1, last_day + 1):
+        cur_date = datetime.date(y, m, day)
+
+        c2_1 = sum(1 for r in active_rows if r['regdate'] <= cur_date and (r['dchdate'] is None or r['dchdate'] >= cur_date) and r['spclty'] in ('03','04'))
+        c2_2 = sum(1 for r in active_rows if r['regdate'] <= cur_date and (r['dchdate'] is None or r['dchdate'] >= cur_date) and r['ipt_type'] == 2)
+        c2_3 = sum(1 for r in active_rows if r['regdate'] <= cur_date and (r['dchdate'] is None or r['dchdate'] >= cur_date) and r['spclty'] == '02')
+        c2_4 = sum(1 for r in active_rows if r['regdate'] <= cur_date and (r['dchdate'] is None or r['dchdate'] >= cur_date) and r['spclty'] == '08')
+        c2_5 = sum(1 for r in active_rows if r['regdate'] <= cur_date and (r['dchdate'] is None or r['dchdate'] >= cur_date) and r['spclty'] == '01')
+        c2_6 = sum(1 for r in active_rows if r['regdate'] <= cur_date and (r['dchdate'] is None or r['dchdate'] >= cur_date) and r['spclty'] == '05')
+        c2_7 = sum(1 for r in active_rows if r['regdate'] <= cur_date and (r['dchdate'] is None or r['dchdate'] >= cur_date) and r['spclty'] == '09')
+        c2_8 = sum(1 for r in active_rows if r['regdate'] <= cur_date and (r['dchdate'] is None or r['dchdate'] >= cur_date) and r['spclty'] == '07')
+        c2_9 = sum(1 for r in active_rows if r['regdate'] <= cur_date and (r['dchdate'] is None or r['dchdate'] >= cur_date) and r['spclty'] == '06')
+        c2_10 = sum(1 for r in active_rows if r['regdate'] <= cur_date and (r['dchdate'] is None or r['dchdate'] >= cur_date) and r['spclty'] == '03')
+
+        dch_today = [r for r in dch_rows if r['dchdate'] == cur_date]
+        c4_los = sum(int(r['los'] or 0) for r in dch_today)
+        c5_total = len(dch_today)
+        c5_1 = sum(1 for r in dch_today if r['dchtype'] == '01')
+        c5_2 = sum(1 for r in dch_today if r['dchtype'] == '02')
+        c5_3 = sum(1 for r in dch_today if r['dchtype'] == '04')
+        c5_4 = sum(1 for r in dch_today if r['dchtype'] in ('08', '09'))
+        c5_5 = sum(1 for r in dch_today if r['dchtype'] == '03')
+
+        occupancy_rate = round((c4_los * 100.0) / bed_count, 1) if bed_count > 0 else 0
+
+        tot_2_1 += c2_1
+        tot_2_2 += c2_2
+        tot_2_3 += c2_3
+        tot_2_4 += c2_4
+        tot_2_5 += c2_5
+        tot_2_6 += c2_6
+        tot_2_7 += c2_7
+        tot_2_8 += c2_8
+        tot_2_9 += c2_9
+        tot_2_10 += c2_10
+        tot_4_los += c4_los
+        tot_5_total += c5_total
+        tot_5_1 += c5_1
+        tot_5_2 += c5_2
+        tot_5_3 += c5_3
+        tot_5_4 += c5_4
+        tot_5_5 += c5_5
+
+        days_data.append({
+            "day": day,
+            "cat_2_1": c2_1, "cat_2_2": c2_2, "cat_2_3": c2_3, "cat_2_4": c2_4, "cat_2_5": c2_5,
+            "cat_2_6": c2_6, "cat_2_7": c2_7, "cat_2_8": c2_8, "cat_2_9": c2_9, "cat_2_10": c2_10,
+            "cat_4_los": c4_los,
+            "cat_5_total": c5_total,
+            "cat_5_1": c5_1, "cat_5_2": c5_2, "cat_5_3": c5_3, "cat_5_4": c5_4, "cat_5_5": c5_5,
+            "occupancy_rate": occupancy_rate
+        })
+
+    month_occupancy = round((tot_4_los * 100.0) / (bed_count * last_day), 1) if bed_count > 0 else 0
+
+    return {
+        "ym": ym,
+        "ward": dict(ward_info),
+        "bed_count": bed_count,
+        "days_in_month": last_day,
+        "days": days_data,
+        "totals": {
+            "cat_2_1": tot_2_1, "cat_2_2": tot_2_2, "cat_2_3": tot_2_3, "cat_2_4": tot_2_4, "cat_2_5": tot_2_5,
+            "cat_2_6": tot_2_6, "cat_2_7": tot_2_7, "cat_2_8": tot_2_8, "cat_2_9": tot_2_9, "cat_2_10": tot_2_10,
+            "cat_4_los": tot_4_los,
+            "cat_5_total": tot_5_total,
+            "cat_5_1": tot_5_1, "cat_5_2": tot_5_2, "cat_5_3": tot_5_3, "cat_5_4": tot_5_4, "cat_5_5": tot_5_5,
+            "occupancy_rate": month_occupancy
+        }
+    }
 
