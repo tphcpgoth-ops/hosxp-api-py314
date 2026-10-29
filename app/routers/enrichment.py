@@ -261,7 +261,7 @@ async def batch_lookup(
 
         visit_sql = text("""
             SELECT 
-                o.hn, o.vstdate, o.vn, o.vsttime,
+                o.hn, o.vstdate, o.vn, o.an, o.vsttime,
                 d.department AS department_name, doc.name AS doctor_name, pt.name AS pttype_name,
                 v.age_y, v.pdx, icd.name AS pdx_name, v.dx0, v.dx1, v.dx2, v.dx3, v.dx4, v.dx5,
                 v.income, v.paid_money,
@@ -287,6 +287,7 @@ async def batch_lookup(
                 bp_str = f"{int(vr['bps'])}/{int(vr['bpd'])}" if vr.get("bps") and vr.get("bpd") else ""
                 visit_by_date_map[key] = {
                     "vn": vr.get("vn") or "",
+                    "an": vr.get("an") or "",
                     "vstdate": vdate_str,
                     "vsttime": str(vr.get("vsttime") or ""),
                     "department_name": vr.get("department_name") or "",
@@ -322,7 +323,7 @@ async def batch_lookup(
     if latest_hn_set:
         latest_sql = text("""
             SELECT 
-                o.hn, o.vstdate, o.vn, o.vsttime,
+                o.hn, o.vstdate, o.vn, o.an, o.vsttime,
                 d.department AS department_name, doc.name AS doctor_name, pt.name AS pttype_name,
                 v.age_y, v.pdx, icd.name AS pdx_name, v.dx0, v.dx1, v.dx2, v.dx3, v.dx4, v.dx5,
                 v.income, v.paid_money,
@@ -346,6 +347,7 @@ async def batch_lookup(
             bp_str = f"{int(vr['bps'])}/{int(vr['bpd'])}" if vr.get("bps") and vr.get("bpd") else ""
             latest_visit_map[vr["hn"]] = {
                 "vn": vr.get("vn") or "",
+                "an": vr.get("an") or "",
                 "vstdate": vdate_str,
                 "vsttime": str(vr.get("vsttime") or ""),
                 "department_name": vr.get("department_name") or "",
